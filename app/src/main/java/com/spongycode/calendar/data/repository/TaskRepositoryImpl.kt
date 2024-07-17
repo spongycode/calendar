@@ -31,7 +31,12 @@ class TaskRepositoryImpl(
     override suspend fun storeTaskOnCloud(task: Task): Flow<Resource<Boolean>> = flow {
         emit(Resource.Progress())
         try {
-            val response = api.storeTask(StoreTaskRequest(user_id = BuildConfig.USER_ID.toInt(), task = task.toTaskDto()))
+            val response = api.storeTask(
+                StoreTaskRequest(
+                    user_id = BuildConfig.USER_ID.toInt(),
+                    task = task.toTaskDto()
+                )
+            )
             emit(Resource.Success(response.status.lowercase() == "success"))
         } catch (e: Exception) {
             emit(Resource.Error(e.message ?: "Unknown error", false))
@@ -41,12 +46,23 @@ class TaskRepositoryImpl(
     override suspend fun deleteTaskFromCloud(timestamp: String): Flow<Resource<Boolean>> = flow {
         emit(Resource.Progress())
         try {
-            val taskEntity = dao.getAllTasks().find { it.timestamp == timestamp }
-            taskEntity?.let {
+            val taskList =
+                api.getTaskList(GetTasksRequest(user_id = BuildConfig.USER_ID.toInt()))
+            val taskId = taskList.tasks
+                .find { it.toTaskDto().toTaskEntity().timestamp == timestamp }
+                ?.task_id
+            if (taskId != null) {
                 val response =
-                    api.deleteTask(DeleteTaskRequest(user_id = BuildConfig.USER_ID.toInt(), task_id = it.id.toInt()))
+                    api.deleteTask(
+                        DeleteTaskRequest(
+                            user_id = BuildConfig.USER_ID.toInt(),
+                            task_id = taskId
+                        )
+                    )
                 emit(Resource.Success(response.status.lowercase() == "success"))
-            } ?: emit(Resource.Error("Task not found", false))
+            } else {
+                emit(Resource.Success(true))
+            }
         } catch (e: Exception) {
             emit(Resource.Error(e.message ?: "Unknown error", false))
         }

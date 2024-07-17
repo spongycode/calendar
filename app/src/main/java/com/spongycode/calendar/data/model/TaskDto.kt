@@ -25,7 +25,7 @@ data class TaskDto(
         }
 
         return TaskEntity(
-            title = title,
+            title = title.split('$')[0],
             description = description,
             year = year,
             month = month,

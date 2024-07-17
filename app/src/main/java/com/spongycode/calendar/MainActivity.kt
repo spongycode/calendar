@@ -4,11 +4,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
-import com.spongycode.calendar.screen.test.TestScreen
+import com.spongycode.calendar.navigation.NavContainer
 import com.spongycode.calendar.ui.theme.CalendarTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -20,9 +21,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             CalendarTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    TestScreen(
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                    Column(modifier = Modifier.padding(innerPadding)) {
+                        NavContainer(startDestination = "calendar")
+                    }
                 }
             }
         }

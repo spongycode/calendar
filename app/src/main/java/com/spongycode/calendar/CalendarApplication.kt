@@ -1,4 +1,4 @@
-package com.spongycode
+package com.spongycode.calendar
 
 import android.app.Application
 import dagger.hilt.android.HiltAndroidApp
