@@ -17,7 +17,7 @@ fun NavContainer(startDestination: String) {
             CalendarScreen(navController = navController)
         }
         composable(route = "task") {
-            TaskScreen()
+            TaskScreen(navController = navController)
         }
     }
 }

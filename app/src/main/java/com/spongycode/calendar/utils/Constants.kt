@@ -1,6 +1,7 @@
 package com.spongycode.calendar.utils
 
 object Constants {
+    const val SHOULD_TRUST_CLOUD = "should_trust_cloud"
     val mapMonth = mapOf(
         0 to "JAN",
         1 to "FEB",

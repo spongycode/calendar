@@ -1,5 +1,6 @@
 package com.spongycode.calendar.screen.calendar
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -31,12 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.spongycode.calendar.domain.model.Task
 import com.spongycode.calendar.screen.calendar.components.AddTaskDialog
-import com.spongycode.calendar.screen.calendar.components.AppName
+import com.spongycode.calendar.screen.components.TopBar
 import com.spongycode.calendar.screen.calendar.components.MonthView
 import com.spongycode.calendar.screen.calendar.components.TaskItem
 import com.spongycode.calendar.screen.components.TaskDetailsDialog
@@ -55,9 +57,27 @@ fun CalendarScreen(
     val currentMonthIndex = remember { mutableIntStateOf(LocalDate.now().monthValue - 1) }
     var showDialog by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
-
+    val context = LocalContext.current
     LaunchedEffect(currentYear.intValue, currentMonthIndex.intValue) {
         viewModel.loadTasksForCurrentMonth(currentYear.intValue, currentMonthIndex.intValue + 1)
+    }
+
+    val previousMonth = {
+        if (currentMonthIndex.intValue == 0) {
+            currentMonthIndex.intValue = 11
+            currentYear.intValue--
+        } else {
+            currentMonthIndex.intValue--
+        }
+    }
+
+    val nextMonth = {
+        if (currentMonthIndex.intValue == 11) {
+            currentMonthIndex.intValue = 0
+            currentYear.intValue++
+        } else {
+            currentMonthIndex.intValue++
+        }
     }
 
     Column(
@@ -66,34 +86,38 @@ fun CalendarScreen(
             .fillMaxHeight(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        AppName(onClick = { navController.navigate("task") })
+        TopBar(onClick = { navController.navigate("task") })
         MonthView(
             modifier = Modifier
                 .padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
-                .height(425.dp)
+                .height(450.dp)
                 .fillMaxWidth()
                 .pointerInput(Unit) {
-                    detectHorizontalDragGestures(onDragEnd = { }) { _, _ ->
-
-                    }
+                    var startX: Float = 0f
+                    var endX: Float = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { offset ->
+                            startX = offset.x
+                        },
+                        onDragEnd = {
+                            if (endX - startX > 0) {
+                                previousMonth()
+                            } else {
+                                nextMonth()
+                            }
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            endX = change.position.x
+                        },
+                    )
                 },
             year = currentYear.intValue,
             month = currentMonthIndex.intValue + 1,
             onNextMonthClick = {
-                if (currentMonthIndex.intValue == 11) {
-                    currentMonthIndex.intValue = 0
-                    currentYear.intValue++
-                } else {
-                    currentMonthIndex.intValue++
-                }
+                nextMonth()
             },
             onPreviousMonthClick = {
-                if (currentMonthIndex.intValue == 0) {
-                    currentMonthIndex.intValue = 11
-                    currentYear.intValue--
-                } else {
-                    currentMonthIndex.intValue--
-                }
+                previousMonth()
             },
             onDateSelected = { day ->
                 viewModel.selectDay(day)
@@ -103,6 +127,17 @@ fun CalendarScreen(
             onMonthYearSelected = { month, year ->
                 currentMonthIndex.intValue = month
                 currentYear.intValue = year
+            },
+            onSync = {
+                Toast
+                    .makeText(context, "Syncing started", Toast.LENGTH_SHORT)
+                    .show()
+                viewModel.manualSync {
+                    Toast
+                        .makeText(context, "Syncing completed", Toast.LENGTH_SHORT)
+                        .show()
+
+                }
             }
         )
 
@@ -182,6 +217,3 @@ fun CalendarScreen(
         }
     }
 }
-
-
-

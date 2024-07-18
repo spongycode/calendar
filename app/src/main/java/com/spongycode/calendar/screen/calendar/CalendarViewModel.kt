@@ -1,10 +1,18 @@
 package com.spongycode.calendar.screen.calendar
 
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spongycode.calendar.domain.model.Task
-import com.spongycode.calendar.domain.repository.TaskRepository
+import com.spongycode.calendar.domain.usecase.AddTaskToCloudUseCase
+import com.spongycode.calendar.domain.usecase.AddTaskToLocalUseCase
+import com.spongycode.calendar.domain.usecase.DeleteTaskFromCloudUseCase
+import com.spongycode.calendar.domain.usecase.DeleteTaskFromLocalUseCase
+import com.spongycode.calendar.domain.usecase.LoadTasksForCurrentMonthUseCase
+import com.spongycode.calendar.domain.usecase.LoadTasksFromCloudUseCase
+import com.spongycode.calendar.domain.usecase.LoadTasksFromLocalUseCase
+import com.spongycode.calendar.utils.Constants.SHOULD_TRUST_CLOUD
 import com.spongycode.calendar.utils.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +23,14 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
-    private val taskRepository: TaskRepository
+    private val loadTasksForCurrentMonthUseCase: LoadTasksForCurrentMonthUseCase,
+    private val addTaskToLocalUseCase: AddTaskToLocalUseCase,
+    private val addTaskToCloudUseCase: AddTaskToCloudUseCase,
+    private val deleteTaskFromLocalUseCase: DeleteTaskFromLocalUseCase,
+    private val deleteTaskFromCloudUseCase: DeleteTaskFromCloudUseCase,
+    private val getTasksFromCloudUseCase: LoadTasksFromCloudUseCase,
+    private val getTasksFromLocalUseCase: LoadTasksFromLocalUseCase,
+    private val sharedPreferences: SharedPreferences
 ) : ViewModel() {
 
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
@@ -25,7 +40,11 @@ class CalendarViewModel @Inject constructor(
     val selectedDay: StateFlow<Int?> = _selectedDay
 
     init {
-        loadTasksForCurrentMonth()
+        val shouldTrustCloud = sharedPreferences.getBoolean(SHOULD_TRUST_CLOUD, true)
+        viewModelScope.launch {
+            loadTasksForCurrentMonth()
+            syncTasks(shouldTrustCloud = shouldTrustCloud)
+        }
     }
 
     fun loadTasksForCurrentMonth(
@@ -33,7 +52,7 @@ class CalendarViewModel @Inject constructor(
         month: Int = LocalDate.now().monthValue
     ) {
         viewModelScope.launch {
-            taskRepository.getTasksByMonthFromLocal(year, month).collect { resource ->
+            loadTasksForCurrentMonthUseCase(year, month).collect { resource ->
                 when (resource) {
                     is Resource.Success -> _tasks.value = resource.data ?: emptyList()
                     is Resource.Error -> Log.e(
@@ -41,8 +60,7 @@ class CalendarViewModel @Inject constructor(
                         "Error loading tasks: ${resource.message}"
                     )
 
-                    is Resource.Progress -> {
-                    }
+                    is Resource.Progress -> {}
                 }
             }
         }
@@ -50,29 +68,11 @@ class CalendarViewModel @Inject constructor(
 
     fun addTask(task: Task) {
         viewModelScope.launch {
-            taskRepository.storeTaskOnLocal(task).collect { resource ->
+            addTaskToLocalUseCase(task).collect { resource ->
                 when (resource) {
                     is Resource.Success -> {
                         loadTasksForCurrentMonth(task.year, task.month)
-                        taskRepository.storeTaskOnCloud(task).collect { cloudResource ->
-                            when (cloudResource) {
-                                is Resource.Success -> {
-                                    if (cloudResource.data != true) {
-                                        Log.e("CalendarViewModel", "Failed to store task on cloud")
-                                    }
-                                }
-
-                                is Resource.Error -> {
-                                    Log.e(
-                                        "CalendarViewModel",
-                                        "Error storing task on cloud: ${cloudResource.message}"
-                                    )
-                                }
-
-                                is Resource.Progress -> {
-                                }
-                            }
-                        }
+                        addTaskToCloudUseCase(task).collect {}
                     }
 
                     is Resource.Error -> Log.e(
@@ -80,8 +80,7 @@ class CalendarViewModel @Inject constructor(
                         "Error storing task: ${resource.message}"
                     )
 
-                    is Resource.Progress -> {
-                    }
+                    is Resource.Progress -> {}
                 }
             }
         }
@@ -89,33 +88,11 @@ class CalendarViewModel @Inject constructor(
 
     fun deleteTask(task: Task) {
         viewModelScope.launch {
-            taskRepository.deleteTaskFromLocal(task.timestamp).collect { resource ->
+            deleteTaskFromLocalUseCase(task).collect { resource ->
                 when (resource) {
                     is Resource.Success -> {
                         loadTasksForCurrentMonth(task.year, task.month)
-                        taskRepository.deleteTaskFromCloud(task.timestamp)
-                            .collect { cloudResource ->
-                                when (cloudResource) {
-                                    is Resource.Success -> {
-                                        if (cloudResource.data != true) {
-                                            Log.e(
-                                                "CalendarViewModel",
-                                                "Failed to delete task from cloud"
-                                            )
-                                        }
-                                    }
-
-                                    is Resource.Error -> {
-                                        Log.e(
-                                            "CalendarViewModel",
-                                            "Error deleting task from cloud: ${cloudResource.message}"
-                                        )
-                                    }
-
-                                    is Resource.Progress -> {
-                                    }
-                                }
-                            }
+                        deleteTaskFromCloudUseCase(task).collect {}
                     }
 
                     is Resource.Error -> Log.e(
@@ -123,10 +100,58 @@ class CalendarViewModel @Inject constructor(
                         "Error deleting task: ${resource.message}"
                     )
 
-                    is Resource.Progress -> {
+                    is Resource.Progress -> {}
+                }
+            }
+        }
+    }
+
+    private fun syncTasks(shouldTrustCloud: Boolean) {
+        viewModelScope.launch {
+            if (shouldTrustCloud) {
+                getTasksFromLocalUseCase().collect { tasksFromLocal ->
+                    tasksFromLocal.data?.let { tasks ->
+                        tasks.forEach { task ->
+                            deleteTaskFromLocalUseCase(task).collect {}
+                        }
+                    }
+                }
+
+                getTasksFromCloudUseCase().collect { tasksFromCloud ->
+                    tasksFromCloud.data?.let { tasks ->
+                        tasks.forEach { task ->
+                            addTaskToLocalUseCase(task).collect {}
+                        }
+                        sharedPreferences.edit().putBoolean(SHOULD_TRUST_CLOUD, false).apply()
+                        loadTasksForCurrentMonth()
+                    }
+                }
+            } else {
+                getTasksFromCloudUseCase().collect { tasksFromCloud ->
+                    tasksFromCloud.data?.let { tasks ->
+                        tasks.forEach { task ->
+                            deleteTaskFromCloudUseCase(task).collect {}
+                        }
+                    }
+                }
+
+                getTasksFromLocalUseCase().collect { tasksFromLocal ->
+                    tasksFromLocal.data?.let { tasks ->
+                        tasks.forEach { task ->
+                            addTaskToCloudUseCase(task).collect {}
+                        }
+                        loadTasksForCurrentMonth()
                     }
                 }
             }
+        }
+    }
+
+    fun manualSync(onComplete: () -> Unit) {
+        viewModelScope.launch {
+            val shouldTrustCloud = sharedPreferences.getBoolean(SHOULD_TRUST_CLOUD, true)
+            syncTasks(shouldTrustCloud = shouldTrustCloud)
+            onComplete()
         }
     }
 

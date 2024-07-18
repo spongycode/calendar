@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,7 +47,8 @@ fun MonthView(
     tasks: List<Task> = emptyList(),
     onNextMonthClick: () -> Unit,
     onPreviousMonthClick: () -> Unit,
-    onMonthYearSelected: (Int, Int) -> Unit
+    onMonthYearSelected: (Int, Int) -> Unit,
+    onSync: () -> Unit = {}
 ) {
     val daysInMonth = Month.of(month).length(Year.isLeap(year.toLong()))
     val firstDayOfWeek = (LocalDate.of(year, month, 1).dayOfWeek.value + 6) % 7
@@ -67,6 +69,21 @@ fun MonthView(
                     .clickable { showMonthYearPicker = true }
             )
             Row {
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(30))
+                        .clickable { onSync() }
+                        .padding(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        modifier = Modifier.size(35.dp),
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Manual Sync"
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .size(50.dp)
